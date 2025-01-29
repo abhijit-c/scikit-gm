@@ -8,6 +8,10 @@ from skfem.helpers import inner, dot, grad
 from scipy.stats._multivariate import multi_rv_frozen
 from scipy._lib._util import check_random_state
 
+from collections import namedtuple
+
+from time import perf_counter
+
 
 class bilaplacian:
     def __init__(
@@ -127,6 +131,13 @@ class bilaplacian:
         return 0.5 * np.inner(innov, self.R @ innov)
 
     def grad_logpdf(self, x: np.ndarray) -> np.ndarray:
+        r"""
+        Evaluate the gradient "logpdf" of the distribution.
+
+        Note: An infinite dimensional distribution does not admit a pdf in this manner.
+        However, this is simply a notational convinience to represent a similar
+        computation.
+        """
         innov = x - self.mean
         return self.R @ innov
 
@@ -176,3 +187,202 @@ class bilaplacian:
     @random_state.setter
     def random_state(self, seed):
         self._random_state = check_random_state(seed)
+
+
+def random_ghep(A, B, Binv, k, p=20, twopass=True, seed=None):
+    r"""
+    Randomized algorithm for Generalized Hermitian Eigenvalue problem
+    $A approx (BU) * \Lambda *(BU)^*$.
+
+    Computes $k$ largest eigenvalues and eigenvectors.
+
+    Modified from randomized algorithm for EV/SVD of $A$.
+
+    This code is modified from the repository ``https://github.com/arvindks/kle``
+
+    Parameters
+    ----------
+    A: np.ndarray | sp.sparray | LinearOperator
+        $A$ as in $A \approx (BU) \Lambda (BU)^*$.
+    B: np.ndarray | sp.sparray | LinearOperator
+        $B$ as in $A \approx (BU) \Lambda (BU)^*$.
+    Binv: np.ndarray | sp.sparray | LinearOperator
+        Operator to solve the system $Bu = r$.
+    k: int
+        Number of eigenpairs to compute
+    p: int, default: ``20``
+        Oversampling parameter which can improve accuracy of resulting solution
+    twopass: bool, default: ``True``
+        Whether to use a twopass or onepass algorithm. Twopass is more accurate, but
+        onepass is faster.
+    seed : {None, int, `numpy.random.Generator`, `numpy.random.RandomState`}, optional
+        If `seed` is None (or `np.random`), the `numpy.random.RandomState`
+        singleton is used.
+        If `seed` is an int, a new ``RandomState`` instance is used,
+        seeded with `seed`.
+        If `seed` is already a ``Generator`` or ``RandomState`` instance
+        then that instance is used.
+    """
+    A = spsla.aslinearoperator(A)
+    B = spsla.aslinearoperator(B)
+    Binv = spsla.aslinearoperator(Binv)
+
+    m, n = A.shape
+    if m != n:
+        raise ValueError(f"A must be a square matrix! Recieved {A.shape=}")
+
+    # Oversample
+    k = k + p
+
+    # Initialize quantities
+    rng = check_random_state(seed)
+    Omega = rng.standard_normal((n, k))
+    Y = np.zeros_like(Omega)
+    Yh = np.zeros_like(Omega)
+
+    # Form matrix vector products with C = B^{-1}A
+    for i in range(k):
+        Y[:, i] = Binv @ (A @ Omega[:, i])
+
+    # Compute Y = Q*R such that Q'*B*Q = I, R can be discarded
+    q, Bq, _ = mgs_stable(B, Y)
+
+    T = np.zeros((k, k))
+
+    if twopass:
+        for i in np.arange(k):
+            Aq = A @ q[:, i]
+            for j in np.arange(k):
+                T[i, j] = np.dot(Aq, q[:, j])
+    else:
+        for i in np.arange(k):
+            Yh[:, i] = B @ Y[:, i]
+
+        OAO = np.dot(Omega.T, Yh)
+        QtBO = np.dot(Bq.T, Omega)
+        T = np.dot(sp.linalg.inv(QtBO.T), np.dot(OAO, sp.linalg.inv(QtBO)))
+
+    # Eigen subproblem
+    w, v = np.linalg.eigh(T)
+
+    # Reverse eigenvalues in descending order
+    w = w[::-1]
+
+    # Compute eigenvectors
+    u = np.dot(q, v[:, ::-1])
+    k = k - p
+
+    return w[:k], u[:, :k]
+
+
+def mgs_stable(A, Z, verbose=False):
+    """
+        Returns QR decomposition of Z. Q and R satisfy the following relations
+        in exact arithmetic
+
+        1. QR    	= Z
+        2. Q^*AQ 	= I
+        3. Q^*AZ	= R
+        4. ZR^{-1}	= Q
+
+        Uses Modified Gram-Schmidt with re-orthogonalization (Rutishauser variant)
+        for computing the A-orthogonal QR factorization
+
+    This code is modified from the repository ``https://github.com/arvindks/kle``
+
+        Parameters
+        ----------
+        A : {sparse matrix, dense matrix, LinearOperator}
+                An array, sparse matrix, or LinearOperator representing
+                the operation ``A * x``, where A is a real or complex square matrix.
+
+        Z : ndarray
+
+        verbose : bool, optional
+                  Displays information about the accuracy of the resulting QR
+                  Default: False
+
+        Returns
+        -------
+
+        q : ndarray
+                The A-orthogonal vectors
+
+        Aq : ndarray
+                The A^{-1}-orthogonal vectors
+
+        r : ndarray
+                The r of the QR decomposition
+
+
+        See Also
+        --------
+        mgs : Modified Gram-Schmidt without re-orthogonalization
+        precholqr  : Based on CholQR
+
+
+        References
+        ----------
+        .. [1] A.K. Saibaba, J. Lee and P.K. Kitanidis, Randomized algorithms for Generalized
+                Hermitian Eigenvalue Problems with application to computing
+                Karhunen-Loe've expansion http://arxiv.org/abs/1307.6885
+
+        .. [2] W. Gander, Algorithms for the QR decomposition. Res. Rep, 80(02), 1980
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> A = np.diag(np.arange(1,101))
+        >>> Z = np.random.randn(100,10)
+        >>> q, Aq, r = mgs_stable(A, Z, verbose = True)
+
+    """
+
+    # Get sizes
+    m = np.size(Z, 0)
+    n = np.size(Z, 1)
+
+    # Convert into linear operator
+    Aop = spsla.aslinearoperator(A)
+
+    # Initialize
+    Aq = np.zeros_like(Z, dtype="d")
+    q = np.zeros_like(Z, dtype="d")
+    r = np.zeros((n, n), dtype="d")
+
+    reorth = np.zeros((n,), dtype="d")
+    eps = np.finfo(np.float64).eps
+
+    q = np.copy(Z)
+
+    for k in np.arange(n):
+        Aq[:, k] = Aop.matvec(q[:, k])
+        t = np.sqrt(np.dot(q[:, k].T, Aq[:, k]))
+
+        nach = 1
+        u = 0
+        while nach:
+            u += 1
+            for i in np.arange(k):
+                s = np.dot(Aq[:, i].T, q[:, k])
+                r[i, k] += s
+                q[:, k] -= s * q[:, i]
+
+            Aq[:, k] = Aop.matvec(q[:, k])
+            tt = np.sqrt(np.dot(q[:, k].T, Aq[:, k]))
+            if tt > t * 10.0 * eps and tt < t / 10.0:
+                nach = 1
+                t = tt
+            else:
+                nach = 0
+                if tt < 10.0 * eps * t:
+                    tt = 0.0
+
+        reorth[k] = u
+        r[k, k] = tt
+        tt = 1.0 / tt if np.abs(tt * eps) > 0.0 else 0.0
+        q[:, k] *= tt
+        Aq[:, k] *= tt
+
+    return q, Aq, r
