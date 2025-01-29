@@ -117,7 +117,16 @@ class Bilaplacian:
         r"""
         Evaluate or estimate the trace of the covariance operator.
         """
-        raise NotImplementedError("TODO")
+        if method == "exact":
+            diag = np.zeros(self.V.N)
+            I = sp.sparse.eye(self.V.N)
+            for idx, e_i in enumerate(I):
+                diag[idx] = np.dot(e_i, self.Rinv @ (self.M @ e_i))
+            return np.sum(diag)
+        elif method == "randomized":
+            raise NotImplementedError("TODO")
+        else:
+            raise ValueError(f"Method not recognized! Recieved {method=}")
 
     def logpdf(self, x: np.ndarray) -> float:
         r"""
