@@ -68,7 +68,9 @@ class bilaplacian:
         self.A = bilaplacian_varf.assemble(V)
         if robin_bc:
             self.A += robin.assemble(V.boundary())
-        self.Ainv = spsla.factorized(self.A)
+        self.Ainv = spsla.LinearOperator(
+            dtype=np.float64, shape=self.A.shape, matvec=spsla.factorized(self.A)
+        )
 
         mass = skfem.BilinearForm(lambda u, v, _: dot(u, v))
 
@@ -95,29 +97,53 @@ class bilaplacian:
                 matvec=lambda x: sp.linalg.lu_solve((lu, piv), x),
             )
 
-    def logpdf(self, x) -> np.ndarray:
-        pass
+        def R(self, x: np.ndarray) -> np.ndarray:
+            return self.A @ (self.Minv @ (self.A @ x))
 
-    def pdf(self, x) -> float:
-        pass
+        self.R = spsla.LinearOperator(dtype=np.float64, shape=self.M.shape, matvec=R)
+
+        def Rinv(self, x: np.ndarray) -> np.ndarray:
+            return self.Ainv @ (self.M @ (self.Ainv @ x))
+
+        self.Rinv = spsla.LinearOperator(
+            dtype=np.float64, shape=self.M.shape, matvec=Rinv
+        )
+
+    def trace(self, method="exact") -> float:
+        r"""
+        Evaluate or estimate the trace of the covariance operator.
+        """
+        raise NotImplementedError("TODO")
+
+    def logpdf(self, x: np.ndarray) -> float:
+        r"""
+        Evaluate the "logpdf" of the distribution.
+
+        Note: An infinite dimensional distribution does not admit a pdf in this manner.
+        However, this is simply a notational convinience to represent a similar
+        computation.
+        """
+        innov = x - self.mean
+        return 0.5 * np.inner(innov, self.R @ innov)
+
+    def grad_logpdf(self, x: np.ndarray) -> np.ndarray:
+        innov = x - self.mean
+        return self.R @ innov
+
+    def sample(self) -> np.ndarray:
+        r"""
+        Get a random sample from the underlying distribution.
+        """
+        s = self.random_state.standard_normal(self.V.N)
+        return self.mean + self.sqrtM @ (self.Ainv @ s)
 
     def rvs(self, size: int = 1) -> np.ndarray:
         """
         Get ``size`` random samples from the underlying distribution.
         """
-        pass
-
-    def R(self, x: np.ndarray) -> np.ndarray:
-        r"""
-        Operator representing the action of the precision matrix.
-        """
-        return self.A @ (self.Minv @ (self.A @ x))
-
-    def Rinv(self, x: np.ndarray) -> np.ndarray:
-        r"""
-        Operator representing the action of the covariance matrix.
-        """
-        return self.Ainv @ (self.M @ (self.Ainv @ x))
+        if size == 1:
+            return self.sample()
+        return np.array([self.sample() for _ in range(size)])
 
     @property
     def V(self) -> Basis:
