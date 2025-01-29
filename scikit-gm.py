@@ -13,7 +13,7 @@ from collections import namedtuple
 from time import perf_counter
 
 
-class bilaplacian:
+class Bilaplacian:
     def __init__(
         self,
         V: Basis,
