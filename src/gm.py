@@ -1,4 +1,5 @@
 import numpy as np
+import scipy as sp
 import scipy.sparse.linalg as spsla
 import skfem
 from skfem.assembly import Basis
@@ -51,12 +52,6 @@ class bilaplacian:
         self._mean = mean if mean is not None else V.zeros()
         self._random_state = check_random_state(seed)
 
-        self.M = skfem.BilinearForm(lambda u, v, _: dot(u, v)).assemble(V)
-        self.Minv = spsla.factorized(self.M)
-        self.sqrtM = self.M.copy()
-        self.sqrtM.setdiag(1 / np.sqrt(self.M @ V.ones()))
-        self.sqrtM = self.M @ self.sqrtM
-
         @skfem.BilinearForm
         def bilaplacian_varf(trial, test, data):
             if Theta is None:
@@ -75,6 +70,31 @@ class bilaplacian:
             self.A += robin.assemble(V.boundary())
         self.Ainv = spsla.factorized(self.A)
 
+        mass = skfem.BilinearForm(lambda u, v, _: dot(u, v))
+
+        # lump mass matrix if possible
+        if isinstance(V.mesh, skfem.MeshTri):
+            self._V_lumped = skfem.CellBasis(
+                V.mesh, V.elem, quadrature=(V.elem.doflocs.T, np.full(3, 1 / 6))
+            )
+            self.M = mass.assemble(self._V_lumped)
+            self.Minv, self.sqrtM, self.sqrtMinv = (self.M.copy() for _ in range(3))
+            self.Minv.setdiag(1 / self.M.diagonal())
+            self.sqrtM.setdiag(np.sqrt(self.M.diagonal()))
+            self.sqrtMinv.setdiag(1 / np.sqrt(self.M.diagonal()))
+        else:  # Going to be slow
+            self.M = mass.assemble(V)
+            self.Minv = spsla.LinearOperator(
+                dtype=np.float64, shape=self.M.shape, matvec=spsla.factorized(self.M)
+            )
+            self.sqrtM = sp.linalg.sqrtm(M.todense())
+            lu, piv = sp.linalg.lu_factor(self.sqrtM)
+            self.sqrtMinv = spsla.LinearOperator(
+                dtype=np.float64,
+                shape=self.M.shape,
+                matvec=lambda x: sp.linalg.lu_solve((lu, piv), x),
+            )
+
     def logpdf(self, x) -> np.ndarray:
         pass
 
@@ -86,6 +106,18 @@ class bilaplacian:
         Get ``size`` random samples from the underlying distribution.
         """
         pass
+
+    def R(self, x: np.ndarray) -> np.ndarray:
+        r"""
+        Operator representing the action of the precision matrix.
+        """
+        return self.A @ (self.Minv @ (self.A @ x))
+
+    def Rinv(self, x: np.ndarray) -> np.ndarray:
+        r"""
+        Operator representing the action of the covariance matrix.
+        """
+        return self.Ainv @ (self.M @ (self.Ainv @ x))
 
     @property
     def V(self) -> Basis:
