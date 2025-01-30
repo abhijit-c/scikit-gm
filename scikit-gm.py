@@ -83,10 +83,9 @@ class Bilaplacian:
                 V.mesh, V.elem, quadrature=(V.elem.doflocs.T, np.full(3, 1 / 6))
             )
             self.M = mass.assemble(self._V_lumped)
-            self.Minv, self.sqrtM, self.sqrtMinv = (self.M.copy() for _ in range(3))
-            self.Minv.setdiag(1 / self.M.diagonal())
-            self.sqrtM.setdiag(np.sqrt(self.M.diagonal()))
-            self.sqrtMinv.setdiag(1 / np.sqrt(self.M.diagonal()))
+            self.Minv = sp.sparse.diags_array(1 / self.M.diagonal(), 0)
+            self.sqrtM = sp.sparse.diags_array(np.sqrt(self.M.diagonal()))
+            self.sqrtMinv = sp.sparse.diags_array(1 / self.sqrtM.diagonal())
         else:  # Going to be slow
             self.M = mass.assemble(V)
             self.Minv = spsla.LinearOperator(
