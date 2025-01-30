@@ -5,7 +5,6 @@ import skfem
 from skfem.assembly import Basis
 from skfem.helpers import inner, dot, grad
 
-from scipy.stats._multivariate import multi_rv_frozen
 from scipy._lib._util import check_random_state
 
 from collections import namedtuple
@@ -125,6 +124,8 @@ class Bilaplacian:
             return np.sum(diag)
         elif method == "randomized":
             raise NotImplementedError("TODO")
+        elif method == "estimator":
+            raise NotImplementedError("TODO")
         else:
             raise ValueError(f"Method not recognized! Recieved {method=}")
 
@@ -196,6 +197,21 @@ class Bilaplacian:
     @random_state.setter
     def random_state(self, seed):
         self._random_state = check_random_state(seed)
+
+
+def tr_hutch(A, k=100, dist="rademacher", seed=None) -> float:
+    rng = check_random_state(seed)
+    A = spsla.aslinearoperator(A)
+    n, m = A.shape
+    if dist == "rademacher":
+        r = rng.binomial(1, 0.5, size=(n, k))
+        Omega = np.ones_like(r)
+        Omega[r == 0] = -1
+    elif dist == "gaussian":
+        Omega = rng.standard_normal((n, k))
+    else:
+        raise ValueError("dist not recognized! Must be 'rademacher' or 'gaussian'.")
+    return np.average(np.einsum("ij,ij->j", Omega, A @ Omega))
 
 
 def random_ghep(A, B, Binv, k, p=20, twopass=True, seed=None):
