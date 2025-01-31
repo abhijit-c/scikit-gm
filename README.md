@@ -1,7 +1,16 @@
 # scikit-gm
 
-This package contains an implementation for a representation of an infinite-dimensional
-Gaussian measure. Provides the following functionality
+This package contains an implementation for a representation of an
+infinite-dimensional Gaussian measure. Built on top of the 
+FEM library [scikit-fem](https://scikit-fem.readthedocs.io/).
+
+![Samples](./samples.png)
+
+## Installation
+In the file ``scikit-gm.py``, we provide the class with the below signature.
+Rather than bother with package managers and the like, it's probably easier for
+all parties if you simply include this source into your application. The
+dependencies simply match those of ``scikit-fem``.
 
 ```python
 class Bilaplacian:

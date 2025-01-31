@@ -117,7 +117,7 @@ class Bilaplacian:
                 V.mesh, V.elem, quadrature=(V.elem.doflocs.T, np.full(3, 1 / 6))
             )
             self.M = mass.assemble(self._V_lumped)
-            self.Minv = sp.sparse.diags_array(1 / self.M.diagonal(), 0)
+            self.Minv = sp.sparse.diags_array(1 / self.M.diagonal())
             self.sqrtM = sp.sparse.diags_array(np.sqrt(self.M.diagonal()))
             self.sqrtMinv = sp.sparse.diags_array(1 / self.sqrtM.diagonal())
         else:  # Going to be slow
@@ -133,12 +133,12 @@ class Bilaplacian:
                 matvec=lambda x: sp.linalg.lu_solve((lu, piv), x),
             )
 
-        def R(self, x: np.ndarray) -> np.ndarray:
+        def R(x: np.ndarray) -> np.ndarray:
             return self.A @ (self.Minv @ (self.A @ x))
 
         self.R = spsla.LinearOperator(dtype=np.float64, shape=self.M.shape, matvec=R)
 
-        def Rinv(self, x: np.ndarray) -> np.ndarray:
+        def Rinv(x: np.ndarray) -> np.ndarray:
             return self.Ainv @ (self.M @ (self.Ainv @ x))
 
         self.Rinv = spsla.LinearOperator(
@@ -467,3 +467,19 @@ def mgs_stable(A, Z, verbose=False):
         Aq[:, k] *= tt
 
     return q, Aq, r
+
+
+if __name__ == "__main__":
+    mesh = skfem.MeshTri().refined(6)
+    V = skfem.Basis(mesh, skfem.ElementTriP1())
+    G_pr = Bilaplacian(V, 1.0, 1.0, robin_bc=True)
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+    samples = G_pr.rvs(3)
+    vmax, vmin = samples.max(), samples.min()
+    for i, s in enumerate(G_pr.rvs(3)):
+        ax[i].set_aspect("equal")
+        V.plot(s, ax=ax[i], shading="gouraud")
+    fig.savefig("samples.png", dpi=512, bbox_inches="tight")
