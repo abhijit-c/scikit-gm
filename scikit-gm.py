@@ -48,6 +48,42 @@ class Bilaplacian:
             If `seed` is already a ``Generator`` or ``RandomState`` instance
             then that instance is used.
 
+        Attributes
+        ----------
+        V: Basis
+            Finite element discritization of the space
+        mean : ArrayLike, default: ``0``
+            Mean of the distribution.
+        R: spsla.LinearOperator
+            Operator for the underlying covariance matrix.
+        Rinv: spsla.LinearOperator
+            Operator for the underlying precision matrix
+        A: sp.sparse.sparray
+            Discretization of bi-Laplacian operator
+        Ainv: spsla.LinearOperator
+            Facotrized linear operator representing $A^{-1}$.
+        M: sp.sparse.sparray
+            Discretization of underling mass matrix
+        Minv: sp.sparse.sparray | spsla.LinearOperator
+            Operator representing $M^{-1}$.
+        sqrtM: sp.sparse.sparray | np.ndarray
+            Matrix square root of M
+        sqrtMinv: sp.sparse.sparray | spsla.LinearOperator
+            Inverse for matrix square root of M
+        random_state : `numpy.random.RandomState`
+            Internal rng of the class
+
+        Methods
+        -------
+        logpdf(x)
+            Evaluate $||x-x_0||_{R^{-1}}$ where $x_0$ is the mean.
+        grad_logpdf(x)
+            Evaluate $R^{-1} (x-x_0)$ where $x_0$ is the mean.
+        rvs(size=1)
+            Sample ``size`` samples from the measure.
+        trace(method="exact")
+            Compute the trace of the covariance operator. Estimator method also
+            avaliable for performance concerns.
         """
         self._V = V
         self._mean = mean if mean is not None else V.zeros()
