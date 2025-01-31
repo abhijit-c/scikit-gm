@@ -10,7 +10,7 @@ FEM library [scikit-fem](https://scikit-fem.readthedocs.io/).
 In the file ``scikit-gm.py``, we provide the class with the below signature.
 Rather than bother with package managers and the like, it's probably easier for
 all parties if you simply include this source into your application. The
-dependencies simply match those of ``scikit-fem``.
+dependencies match those of ``scikit-fem``.
 
 ```python
 class Bilaplacian:
