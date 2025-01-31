@@ -7,9 +7,7 @@ from skfem.helpers import inner, dot, grad
 
 from scipy._lib._util import check_random_state
 
-from collections import namedtuple
-
-from time import perf_counter
+from typing import Literal
 
 
 class Bilaplacian:
@@ -112,19 +110,42 @@ class Bilaplacian:
             dtype=np.float64, shape=self.M.shape, matvec=Rinv
         )
 
-    def trace(self, method="exact") -> float:
+    def trace(
+        self,
+        method: Literal["exact", "estimator", "randomized"] = "exact",
+        **kwargs,
+    ) -> float:
         r"""
         Evaluate or estimate the trace of the covariance operator.
+
+        Parameters
+        ----------
+        method: Literal["exact", "estimator", "randomized"], default: ``"exact"``
+            Method to use to compute/estimate the trace. "exact" computes the diagonal
+            and sums elements, "estimator" uses a Hutchinson estimator, "randomized"
+            uses a low-rank appproximation.
+        kwargs:
+            Extra arguments to pass to the estimator. If the method is "estimator", see
+            the ``tr_hutch`` function. If the method is "randomized", see the
+            ``random_ghep`` function.
         """
+        RinvM = spsla.LinearOperator(
+            dtype=np.float64,
+            shape=self.M.shape,
+            matvec=lambda x: self.Rinv @ (self.M @ x),
+        )
         if method == "exact":
-            diag = np.zeros(self.V.N)
-            I = sp.sparse.eye(self.V.N)
-            for idx, e_i in enumerate(I):
-                diag[idx] = np.dot(e_i, self.Rinv @ (self.M @ e_i))
-            return np.sum(diag)
+            RinvM_I = RinvM @ sp.sparse.eye(self.V.N)
+            return np.sum(RinvM_I.diagonal())
+
+        if "seed" in kwargs:
+            seed = kwargs.pop("seed")
+        else:
+            seed = self.random_state
+
+        if method == "estimator":
+            return tr_hutch(RinvM, seed=seed, **kwargs)
         elif method == "randomized":
-            raise NotImplementedError("TODO")
-        elif method == "estimator":
             raise NotImplementedError("TODO")
         else:
             raise ValueError(f"Method not recognized! Recieved {method=}")
@@ -199,7 +220,7 @@ class Bilaplacian:
         self._random_state = check_random_state(seed)
 
 
-def tr_hutch(A, k=100, dist="rademacher", seed=None) -> float:
+def tr_hutch(A, k=128, dist="rademacher", seed=None) -> float:
     rng = check_random_state(seed)
     A = spsla.aslinearoperator(A)
     n, m = A.shape
@@ -214,7 +235,7 @@ def tr_hutch(A, k=100, dist="rademacher", seed=None) -> float:
     return np.average(np.einsum("ij,ij->j", Omega, A @ Omega))
 
 
-def random_ghep(A, B, Binv, k, p=20, twopass=True, seed=None):
+def random_ghep(A, B, Binv, k=128, p=20, twopass=True, seed=None):
     r"""
     Randomized algorithm for Generalized Hermitian Eigenvalue problem
     $A approx (BU) * \Lambda *(BU)^*$.
