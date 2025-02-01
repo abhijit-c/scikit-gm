@@ -1,5 +1,7 @@
 # scikit-gm
 
+[![DOI](https://zenodo.org/badge/923789244.svg)](https://doi.org/10.5281/zenodo.14784145)
+
 This package contains an implementation for a representation of an
 infinite-dimensional Gaussian measure. Built on top of the 
 FEM library [scikit-fem](https://scikit-fem.readthedocs.io/).
