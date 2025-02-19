@@ -1,0 +1,28 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: scikit-gm
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Abhijit
+    family-names: Chowdhary
+    email: abhijit9331@gmail.com
+    affiliation: North Carolina State University
+    orcid: 'https://orcid.org/0000-0002-5092-3503'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.14784146
+repository-code: 'https://github.com/abhijit-c/scikit-gm'
+abstract: ' An implementation of an infinite-dimensional Gaussian measure using scikit-fem.'
+keywords:
+  - Bayesian Inverse Problem
+  - Gaussian Measures
+  - Finite Elements
+license: MIT
+commit: c1d36a9
+version: v1.0.0
+date-released: '2025-02-01'
