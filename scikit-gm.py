@@ -482,4 +482,6 @@ if __name__ == "__main__":
     for i, s in enumerate(G_pr.rvs(3)):
         ax[i].set_aspect("equal")
         V.plot(s, ax=ax[i], shading="gouraud")
-    fig.savefig("samples.png", dpi=512, bbox_inches="tight")
+        ax[i].set_axis_off()
+    fig.subplots_adjust(wspace=0)
+    fig.savefig("samples.png", dpi=512, bbox_inches="tight", transparent=True)
